@@ -1,157 +1,109 @@
 #include <iostream>
 #include <cmath>
-#include <vector>
+#include <thread>
+#include <chrono>
 
-using namespace std;
+constexpr int consoleWidth = 80;
+constexpr int consoleHeight = 24;
 
-// Define a simple 3D point structure
-struct Point3D {
+struct Vec3 {
     float x, y, z;
-};
 
-// Define a simple 3D vector structure
-struct Vector3D {
-    float x, y, z;
-    
-    Vector3D operator-(const Vector3D& other) const {
-        return {x - other.x, y - other.y, z - other.z};
+    Vec3(float x_, float y_, float z_) : x(x_), y(y_), z(z_) {}
+
+    Vec3 operator+(const Vec3& other) const {
+        return Vec3(x + other.x, y + other.y, z + other.z);
+    }
+
+    Vec3 operator-(const Vec3& other) const {
+        return Vec3(x - other.x, y - other.y, z - other.z);
+    }
+
+    Vec3 operator*(float scalar) const {
+        return Vec3(x * scalar, y * scalar, z * scalar);
+    }
+
+    float dot(const Vec3& other) const {
+        return x * other.x + y * other.y + z * other.z;
     }
 };
 
-// Define a simple bounding box structure
-struct BoundingBox {
-    Point3D min, max;
-};
+class Cube {
+private:
+    Vec3 center;
+    float size;
 
-// Define a simple 3D line segment structure
-struct LineSegment3D {
-    Point3D start, end;
-};
+public:
+    Cube(const Vec3& center_, float size_) : center(center_), size(size_) {}
 
-// Function to check if a point is inside a bounding box
-bool pointInBoundingBox(const Point3D& point, const BoundingBox& box) {
-    return (point.x >= box.min.x && point.x <= box.max.x &&
-            point.y >= box.min.y && point.y <= box.max.y &&
-            point.z >= box.min.z && point.z <= box.max.z);
-}
+    bool intersects(const Vec3& rayOrigin, const Vec3& rayDir, float& t) const {
+        // The algorithm for ray-cube intersection is a bit more complex, 
+        // but I'm simplifying it here for demonstration purposes.
+        // You may want to implement a more robust algorithm.
+        // Here's a basic approach for demonstration:
 
-// Function to check if a ray intersects a 3D triangle
-bool rayIntersectsTriangle(const Point3D& rayOrigin, const Vector3D& rayDir, const Point3D& v0, const Point3D& v1, const Point3D& v2) {
-    Vector3D edge1 = v1 - v0;
-    Vector3D edge2 = v2 - v0;
-    Vector3D h = cross(rayDir, edge2);
-    float a = dot(edge1, h);
-    if (a > -0.00001 && a < 0.00001)
-        return false; // Ray is parallel to triangle
-    float f = 1.0f / a;
-    Vector3D s = rayOrigin - v0;
-    float u = f * dot(s, h);
-    if (u < 0.0f || u > 1.0f)
-        return false;
-    Vector3D q = cross(s, edge1);
-    float v = f * dot(rayDir, q);
-    if (v < 0.0f || u + v > 1.0f)
-        return false;
-    // At this stage we can compute t to find out where the intersection point is on the line.
-    float t = f * dot(edge2, q);
-    if (t > 0.00001) // Ray intersection
-        return true;
-    else // This means that there is a line intersection but not a ray intersection.
-        return false;
-}
+        // Compute t values for intersections with each face
+        float tNear = -INFINITY;
+        float tFar = INFINITY;
 
-// Function to perform ray casting against a spinning cube
-void castRay(const Point3D& rayOrigin, const Vector3D& rayDir, const vector<LineSegment3D>& cubeEdges) {
-    const float cubeSize = 1.0f;
-    const Point3D cubeCenter = {0.0f, 0.0f, 0.0f};
-    const float halfCubeSize = cubeSize / 2.0f;
-    
-    Point3D vertices[8] = {
-        {cubeCenter.x - halfCubeSize, cubeCenter.y - halfCubeSize, cubeCenter.z - halfCubeSize},
-        {cubeCenter.x + halfCubeSize, cubeCenter.y - halfCubeSize, cubeCenter.z - halfCubeSize},
-        {cubeCenter.x + halfCubeSize, cubeCenter.y + halfCubeSize, cubeCenter.z - halfCubeSize},
-        {cubeCenter.x - halfCubeSize, cubeCenter.y + halfCubeSize, cubeCenter.z - halfCubeSize},
-        {cubeCenter.x - halfCubeSize, cubeCenter.y - halfCubeSize, cubeCenter.z + halfCubeSize},
-        {cubeCenter.x + halfCubeSize, cubeCenter.y - halfCubeSize, cubeCenter.z + halfCubeSize},
-        {cubeCenter.x + halfCubeSize, cubeCenter.y + halfCubeSize, cubeCenter.z + halfCubeSize},
-        {cubeCenter.x - halfCubeSize, cubeCenter.y + halfCubeSize, cubeCenter.z + halfCubeSize}
-    };
-    
-    vector<Point3D> cubeFaces[6] = {
-        {vertices[0], vertices[1], vertices[2], vertices[3]}, // Front face
-        {vertices[4], vertices[5], vertices[6], vertices[7]}, // Back face
-        {vertices[0], vertices[1], vertices[5], vertices[4]}, // Left face
-        {vertices[3], vertices[2], vertices[6], vertices[7]}, // Right face
-        {vertices[0], vertices[3], vertices[7], vertices[4]}, // Bottom face
-        {vertices[1], vertices[2], vertices[6], vertices[5]}  // Top face
-    };
-    
-    for (const auto& edge : cubeEdges) {
-        for (const auto& face : cubeFaces) {
-            if (rayIntersectsTriangle(rayOrigin, rayDir, face[0], face[1], face[2]) ||
-                rayIntersectsTriangle(rayOrigin, rayDir, face[0], face[2], face[3])) {
-                cout << "Ray intersects cube." << endl;
-                return;
-            }
+        for (int i = 0; i < 3; ++i) {
+            float t1 = (center.x - size / 2 - rayOrigin.x) / rayDir.x;
+            float t2 = (center.x + size / 2 - rayOrigin.x) / rayDir.x;
+            tNear = std::max(tNear, std::min(t1, t2));
+            tFar = std::min(tFar, std::max(t1, t2));
+
+            t1 = (center.y - size / 2 - rayOrigin.y) / rayDir.y;
+            t2 = (center.y + size / 2 - rayOrigin.y) / rayDir.y;
+            tNear = std::max(tNear, std::min(t1, t2));
+            tFar = std::min(tFar, std::max(t1, t2));
+
+            t1 = (center.z - size / 2 - rayOrigin.z) / rayDir.z;
+            t2 = (center.z + size / 2 - rayOrigin.z) / rayDir.z;
+            tNear = std::max(tNear, std::min(t1, t2));
+            tFar = std::min(tFar, std::max(t1, t2));
         }
+
+        // Check if ray hits the cube
+        if (tNear <= tFar && tFar >= 0) {
+            t = tNear > 0 ? tNear : tFar;
+            return true;
+        }
+
+        return false;
     }
-    
-    cout << "Ray does not intersect the cube." << endl;
-}
+};
 
-// Function to compute cross product of two vectors
-Vector3D cross(const Vector3D& a, const Vector3D& b) {
-    return {a.y * b.z - a.z * b.y,
-            a.z * b.x - a.x * b.z,
-            a.x * b.y - a.y * b.x};
-}
-
-// Function to compute dot product of two vectors
-float dot(const Vector3D& a, const Vector3D& b) {
-    return a.x * b.x + a.y * b.y + a.z * b.z;
+void clearConsole() {
+    std::cout << "\x1B[2J\x1B[H";
 }
 
 int main() {
-    // Define the ray origin and direction
-    Point3D rayOrigin = {0.0f, 0.0f, -3.0f};
-    Vector3D rayDirection = {0.0f, 0.0f, 1.0f}; // Example: ray pointing along the positive z-axis
-    
-    // Define the edges of a cube
-    vector<LineSegment3D> cubeEdges = {
-        {{-0.5f, -0.5f, -0.5f}, {0.5f, -0.5f, -0.5f}}, // Bottom edge
-        {{0.5f, -0.5f, -0.5f}, {0.5f, 0.5f, -0.5f}},   // Right edge
-        {{0.5f, 0.5f, -0.5f}, {-0.5f, 0.5f, -0.5f}},   // Top edge
-        {{-0.5f, 0.5f, -0.5f}, {-0.5f, -0.5f, -0.5f}}, // Left edge
-        {{-0.5f, -0.5f, 0.5f}, {0.5f, -0.5f, 0.5f}},   // Front edge
-        {{0.5f, -0.5f, 0.5f}, {0.5f, 0.5f, 0.5f}},     // Right-front edge
-        {{0.5f, 0.5f, 0.5f}, {-0.5f, 0.5f, 0.5f}},     // Top-front edge
-        {{-0.5f, 0.5f, 0.5f}, {-0.5f, -0.5f, 0.5f}}    // Left-front edge
-    };
-    
-    // Spin the cube around the y-axis
-    const float rotationSpeed = 0.01f;
-    float rotationAngle = 0.0f;
+    const int numFrames = 100;
+    const float angleDelta = 2 * M_PI / numFrames;
+    const Vec3 rayOrigin(consoleWidth / 2, consoleHeight / 2, -100); // Position of the "camera"
 
-    // Main loop
-    while (rotationAngle < 2 * M_PI) {
-        // Update cube rotation
-        for (auto& edge : cubeEdges) {
-            float newXStart = edge.start.x * cos(rotationSpeed) + edge.start.z * sin(rotationSpeed);
-            float newZStart = -edge.start.x * sin(rotationSpeed) + edge.start.z * cos(rotationSpeed);
-            float newXEnd = edge.end.x * cos(rotationSpeed) + edge.end.z * sin(rotationSpeed);
-            float newZEnd = -edge.end.x * sin(rotationSpeed) + edge.end.z * cos(rotationSpeed);
-            edge.start.x = newXStart;
-            edge.start.z = newZStart;
-            edge.end.x = newXEnd;
-            edge.end.z = newZEnd;
+    Cube cube(Vec3(consoleWidth / 2, consoleHeight / 2, 0), 10);
+
+    for (int frame = 0; frame < numFrames; ++frame) {
+        clearConsole();
+
+        float angle = angleDelta * frame;
+        Vec3 rayDir(std::cos(angle), std::sin(angle), 0);
+
+        for (int y = 0; y < consoleHeight; ++y) {
+            for (int x = 0; x < consoleWidth; ++x) {
+                float t;
+                if (cube.intersects(rayOrigin, rayDir, t)) {
+                    std::cout << '#'; // Print '#' if ray intersects with cube
+                } else {
+                    std::cout << ' ';
+                }
+            }
+            std::cout << '\n';
         }
-        
-        // Cast the ray and check for intersections
-        castRay(rayOrigin, rayDirection, cubeEdges);
-        
-        // Update rotation angle
-        rotationAngle += rotationSpeed;
+
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
     }
-    
+
     return 0;
 }
